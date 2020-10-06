@@ -10,7 +10,7 @@ trixie
 latest
 "}
 
-BASENAME=bitnami/minideb
+BASENAME=alekitto/minideb
 DOCKER_REGISTRY=${DOCKER_REGISTRY:-"docker.io"}
 PLATFORMS=${PLATFORMS:-amd64 arm64}
 DRY_RUN=${DRY_RUN:-}
