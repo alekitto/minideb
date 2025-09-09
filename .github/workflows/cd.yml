@@ -21,7 +21,7 @@ jobs:
   shellcheck:
     # The type of runner that the job will run on
     runs-on: ubuntu-24.04
-    if: github.event_name != 'schedule' || github.repository == 'bitnami/minideb'
+    if: github.event_name != 'schedule' || github.repository == 'alekitto/minideb'
     name: Shellcheck
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -37,6 +37,9 @@ jobs:
   build_multiarch:
     runs-on: ${{ matrix.arch.platform }}
     needs: [ shellcheck ]
+    permissions:
+      contents: read
+      packages: write
     strategy:
       matrix:
         dist: [bullseye, bookworm, trixie]
@@ -54,29 +57,15 @@ jobs:
           dist: "${{ matrix.dist }}"
           platform: "${{ matrix.arch.name }}"
           is_latest: ${{ matrix.dist == env.LATEST }}
-      - name: Push to DockerHUB
-        if: github.repository == 'bitnami/minideb' && github.ref == 'refs/heads/master'
+      - name: Push to GitHub Container Registry
+        if: github.repository == 'alekitto/minideb' && github.ref == 'refs/heads/master'
         env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-          DOCKER_REGISTRY: docker.io
-          DOCKER_CONTENT_TRUST_REPOSITORY_KEY: ${{ secrets.DOCKER_CONTENT_TRUST_REPOSITORY_KEY }}
-          DOCKER_CONTENT_TRUST_REPOSITORY_PASSPHRASE: ${{ secrets.DOCKER_CONTENT_TRUST_REPOSITORY_PASSPHRASE }}
+          DOCKER_USERNAME: ${{ github.actor }}
+          DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          DOCKER_REGISTRY: ghcr.io
+#          DOCKER_CONTENT_TRUST_REPOSITORY_KEY: ${{ secrets.DOCKER_CONTENT_TRUST_REPOSITORY_KEY }}
+#          DOCKER_CONTENT_TRUST_REPOSITORY_PASSPHRASE: ${{ secrets.DOCKER_CONTENT_TRUST_REPOSITORY_PASSPHRASE }}
         run: |
-          bash pushone "${{ matrix.dist }}" "${{ matrix.arch.name }}"
-          if ${{ matrix.dist == env.LATEST }} ; then
-             bash pushone "latest" "${{ matrix.arch.name }}"
-          fi
-      - name: Push to AWS
-        if: github.repository == 'bitnami/minideb' && github.ref == 'refs/heads/master'
-        env:
-          DOCKER_USERNAME: AWS
-          DOCKER_REGISTRY: public.ecr.aws
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_PUBLIC_GALLERY_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_PUBLIC_GALLERY_SECRET_KEY }}
-        run: |
-          # AWS login
-          export DOCKER_PASSWORD="$(aws ecr-public get-login-password --region us-east-1)"
           bash pushone "${{ matrix.dist }}" "${{ matrix.arch.name }}"
           if ${{ matrix.dist == env.LATEST }} ; then
              bash pushone "latest" "${{ matrix.arch.name }}"
@@ -84,26 +73,19 @@ jobs:
   deploy_manifests:
     runs-on: ubuntu-24.04
     needs: [ build_multiarch ]
-    if: github.repository == 'bitnami/minideb' && github.ref == 'refs/heads/master'
+    permissions:
+      contents: read
+      packages: write
+    if: github.repository == 'alekitto/minideb' && github.ref == 'refs/heads/master'
 
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
-      - name: Push Manifests to DockerHUB
+      - name: Push Manifests to GitHub Container Registry
         env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-          DOCKER_REGISTRY: docker.io
+          DOCKER_USERNAME: ${{ github.actor }}
+          DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          DOCKER_REGISTRY: ghcr.io
         run: |
-          DISTS="bullseye bookworm trixie latest" bash pushmanifest
-      - name: Push Manifests to AWS
-        env:
-          DOCKER_USERNAME: AWS
-          DOCKER_REGISTRY: public.ecr.aws
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_PUBLIC_GALLERY_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_PUBLIC_GALLERY_SECRET_KEY }}
-        run: |
-          # AWS login
-          export DOCKER_PASSWORD="$(aws ecr-public get-login-password --region us-east-1)"
           DISTS="bullseye bookworm trixie latest" bash pushmanifest
   # If the CI Pipeline does not succeed we should notify the interested agents
   notify:
@@ -111,7 +93,7 @@ jobs:
     needs:
       - build_multiarch
       - deploy_manifests
-    if: ${{ always() && github.repository == 'bitnami/minideb' && (needs.build_multiarch.result == 'failure' || needs.deploy_manifests.result == 'failure') }}
+    if: ${{ always() && github.repository == 'alekitto/minideb' && (needs.build_multiarch.result == 'failure' || needs.deploy_manifests.result == 'failure') }}
     uses: bitnami/support/.github/workflows/gchat-notification.yml@main
     with:
       workflow: ${{ github.workflow }}
